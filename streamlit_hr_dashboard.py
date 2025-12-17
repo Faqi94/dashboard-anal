@@ -1061,30 +1061,30 @@ with tab_exec:
     r1 = st.columns(4)
     with r1[0]: kpi_card("Total Perusahaan", format_int(total_companies), "Unik (gabungan rekap + employee)", pill="CLIENTS")
     with r1[1]: kpi_card("Perusahaan AKTIF (Rekap)", format_int(rekap_active_companies) if rekap_active_companies is not None else "—", "Berdasarkan kolom STATUS rekap", pill="PORTFOLIO")
-    with r1[2]: kpi_card("Total User Aktif (Rekap)", format_int(user_active_total) if user_active_total is not None else "—", "Σ USER_ACTIVE", pill="ADOPTION")
-    with r1[3]: kpi_card("Total User Tidak Aktif (Rekap)", format_int(user_inactive_total) if user_inactive_total is not None else "—", "Σ USER_INACTIVE", pill="ADOPTION")
+    with r1[2]: kpi_card("Total User Aktif (Rekap)", format_int(user_active_total) if user_active_total is not None else "—", "Karyawan Aktif", pill="ADOPTION")
+    with r1[3]: kpi_card("Total User Tidak Aktif (Rekap)", format_int(user_inactive_total) if user_inactive_total is not None else "—", "Karyawan Non Aktif", pill="ADOPTION")
 
     r2 = st.columns(4)
-    with r2[0]: kpi_card("Total Karyawan", format_int(emp_total) if emp_total is not None else "—", "Jika dataset karyawan diupload", pill="HR")
+    with r2[0]: kpi_card("Total Karyawan", format_int(emp_total) if emp_total is not None else "—", "Total Seluruh Karyawan", pill="HR")
     with r2[1]: kpi_card("Karyawan Aktif", format_int(emp_active) if emp_active is not None else "—", "Berdasarkan STATUS (karyawan)", pill="HR")
     with r2[2]: kpi_card("Employee Active Rate", format_pct(emp_active_rate), "Aktif / total", pill="HR")
     with r2[3]:
         kpi_card("New Employee Accounts (30D)", format_int(new_emp_30d) if new_emp_30d is not None else "—",
-                 "Berdasarkan TANGGAL_DIBUAT (karyawan)", pill="GROWTH")
+                 "Total Karyawan Baru", pill="GROWTH")
 
     r3 = st.columns(4)
     with r3[0]:
         kpi_card("New Companies (30D)", format_int(new_company_30d) if new_company_30d is not None else "—",
-                 "Berdasarkan CREATED_AT (rekap)", pill="GROWTH")
+                 "Total Perusahaan Baru", pill="GROWTH")
     with r3[1]:
         kpi_card("Employee Churn (30D)", format_int(churn_emp_30d) if churn_emp_30d is not None else "—",
                  "Berdasarkan TANGGAL_NONAKTIF (karyawan)", pill="RISK")
     with r3[2]:
         kpi_card("Subs End ≤ 30D", format_int(subs_end_30) if subs_end_30 is not None else "—",
-                 "Perusahaan berisiko renewal (SUBS_END)", pill="RISK")
+                 "Berlangganan Akan Habis Bulan Ini", pill="RISK")
     with r3[3]:
         kpi_card("Subs End ≤ 90D", format_int(subs_end_90) if subs_end_90 is not None else "—",
-                 "Horizon risiko 90 hari", pill="RISK")
+                 "Berlangganan Akan Habis <3 Bulan", pill="RISK")
 
     st.markdown('<hr class="hrline"/>', unsafe_allow_html=True)
     st.markdown("#### Quick Insights (auto)")
