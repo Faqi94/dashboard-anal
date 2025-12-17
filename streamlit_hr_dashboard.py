@@ -387,6 +387,176 @@ def pick_col(df, candidates):
             return c
     return None
 
+import pandas as pd
+import numpy as np
+import re
+
+# =========================
+# Robust Employee Loader
+# =========================
+EMP_REQUIRED_HEADERS = [
+    "JOIN DATE", "END DATE", "TANGGAL LAHIR", "DEPARTEMEN"
+]
+
+# mapping rename dari "unnamed" atau variasi penamaan
+EMP_RENAME_BY_NAME = {
+    "UNNAMED: 34": "STATUS_KEPEGAWAIAN",
+    "UNNAMED 34": "STATUS_KEPEGAWAIAN",
+    "UNNAMED: 35": "NPWP",
+    "UNNAMED 35": "NPWP",
+    "UNNAMED: 36": "BPJS_KES",
+    "UNNAMED 36": "BPJS_KES",
+    "UNNAMED: 42": "STATUS",
+    "UNNAMED 42": "STATUS",
+    # tambahan dari info kamu
+    "UNNAMED 1": "PERUSAHAAN",
+    "UNNAMED: 1": "PERUSAHAAN",
+    "UNNAMED 37": "NO. BPJSTK",
+    "UNNAMED: 37": "NO. BPJSTK",
+    "UNNAMED 40": "TANGGAL DIBUAT",
+    "UNNAMED: 40": "TANGGAL DIBUAT",
+    "UNNAMED 41": "TANGGAL NONAKTIF",
+    "UNNAMED: 41": "TANGGAL NONAKTIF",
+}
+
+EMP_RENAME_BY_INDEX_0BASED = {
+    1: "PERUSAHAAN",        # kolom ke-2
+    34: "STATUS_KEPEGAWAIAN",
+    35: "NPWP",
+    36: "BPJS_KES",
+    37: "NO. BPJSTK",
+    40: "TANGGAL DIBUAT",
+    41: "TANGGAL NONAKTIF",
+    42: "STATUS",
+    43: "IS AKTIF",
+    44: "MASA KERJA BULAN",  # kalau memang ada kolom ke-45 (hati-hati bila total 44)
+}
+
+def _norm_col(x: str) -> str:
+    x = "" if x is None else str(x)
+    x = x.strip()
+    x = re.sub(r"\s+", " ", x)
+    return x.upper()
+
+def _find_header_row_from_preview(preview_df: pd.DataFrame, required_headers=EMP_REQUIRED_HEADERS, min_hits=2):
+    """Cari baris mana yang paling mirip header dengan menghitung overlap header penting."""
+    best_row = 0
+    best_score = -1
+    req = set(_norm_col(h) for h in required_headers)
+
+    for r in range(min(len(preview_df), 30)):
+        row_vals = [_norm_col(v) for v in preview_df.iloc[r].tolist()]
+        row_set = set([v for v in row_vals if v and v != "NAN"])
+        score = len(req.intersection(row_set))
+        if score > best_score:
+            best_score = score
+            best_row = r
+
+    # kalau tidak ketemu yang meyakinkan, fallback ke header row 1 (sesuai instruksi kamu)
+    if best_score < min_hits:
+        return 1, best_score
+    return best_row, best_score
+
+def _safe_to_datetime(s: pd.Series) -> pd.Series:
+    dt = pd.to_datetime(s, errors="coerce", dayfirst=False)  # kamu punya format campur; ini aman
+    # paksa '1970-01-01' dan error sistem jadi NaT
+    dt = dt.mask(dt == pd.Timestamp("1970-01-01"))
+    return dt
+
+def load_employee_data(uploaded_file, force_header_row=None):
+    """
+    Robust loader untuk file karyawan:
+    - otomatis deteksi header row (kalau force_header_row None)
+    - normalize nama kolom (uppercase + trim)
+    - rename Unnamed by NAME dan fallback by INDEX
+    - standardisasi tanggal + departemen uppercase + masa kerja bulan
+    """
+    info = {"header_row": None, "header_score": None, "source_type": None, "columns_before": None, "columns_after": None}
+
+    if uploaded_file is None:
+        return None, info
+
+    name = getattr(uploaded_file, "name", "")
+    is_csv = str(name).lower().endswith(".csv")
+
+    # --- preview dulu tanpa header untuk deteksi baris header
+    if is_csv:
+        info["source_type"] = "csv"
+        preview = pd.read_csv(uploaded_file, header=None, nrows=25, dtype=str, encoding_errors="ignore")
+        header_row, score = (force_header_row, None) if force_header_row is not None else _find_header_row_from_preview(preview)
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, header=header_row, dtype=str, encoding_errors="ignore")
+    else:
+        info["source_type"] = "excel"
+        preview = pd.read_excel(uploaded_file, header=None, nrows=25, dtype=str)
+        header_row, score = (force_header_row, None) if force_header_row is not None else _find_header_row_from_preview(preview)
+        df = pd.read_excel(uploaded_file, header=header_row, dtype=str)
+
+    info["header_row"] = header_row
+    info["header_score"] = score
+
+    # --- normalize column names
+    cols_before = list(df.columns)
+    df.columns = [_norm_col(c) for c in df.columns]
+    info["columns_before"] = cols_before
+
+    # --- rename by NAME (unnamed)
+    rename_map = {}
+    for c in df.columns:
+        nc = _norm_col(c)
+        if nc in EMP_RENAME_BY_NAME:
+            rename_map[c] = EMP_RENAME_BY_NAME[nc]
+    df = df.rename(columns=rename_map)
+
+    # --- fallback rename by INDEX kalau masih belum ada kolom penting
+    # (berguna kalau "Unnamed: xx" berubah labelnya tapi posisinya tetap)
+    cols = list(df.columns)
+    for idx0, newname in EMP_RENAME_BY_INDEX_0BASED.items():
+        if idx0 < len(cols):
+            old = cols[idx0]
+            # jangan overwrite kalau target sudah ada
+            if newname not in df.columns and (old.startswith("UNNAMED") or old.strip() == "" or old == "NAN"):
+                df = df.rename(columns={old: newname})
+
+    # --- standardisasi tanggal (kalau kolom ada)
+    for dc in ["JOIN DATE", "END DATE", "TANGGAL LAHIR", "TANGGAL DIBUAT", "TANGGAL NONAKTIF"]:
+        if dc in df.columns:
+            df[dc] = _safe_to_datetime(df[dc])
+            # handle '0000-00-00' atau tanggal “default sistem” -> NaT (sudah ke-coerce)
+            df.loc[df[dc].astype(str).str.contains("0000-00-00", na=False), dc] = pd.NaT
+
+    # --- departemen uppercase
+    if "DEPARTEMEN" in df.columns:
+        df["DEPARTEMEN"] = df["DEPARTEMEN"].astype(str).str.strip().str.upper().replace({"NAN": np.nan})
+
+    # --- status aktif: coba ambil dari IS AKTIF atau STATUS
+    if "IS AKTIF" in df.columns:
+        isaktif = df["IS AKTIF"].astype(str).str.strip().str.upper()
+        aktif_mask = isaktif.isin(["1", "TRUE", "YA", "Y", "AKTIF", "ACTIVE"])
+    elif "STATUS" in df.columns:
+        stt = df["STATUS"].astype(str).str.strip().str.upper()
+        aktif_mask = stt.isin(["AKTIF", "ACTIVE"])
+    else:
+        aktif_mask = pd.Series([True] * len(df), index=df.index)
+
+    # --- MASA KERJA BULAN (recompute supaya konsisten)
+    today = pd.Timestamp.today().normalize()
+    if "JOIN DATE" in df.columns:
+        join = df["JOIN DATE"]
+        end = df["END DATE"] if "END DATE" in df.columns else pd.Series([pd.NaT]*len(df), index=df.index)
+
+        masa = pd.Series([np.nan] * len(df), index=df.index, dtype="float")
+        # aktif: today - join
+        masa.loc[aktif_mask & join.notna()] = (today - join.loc[aktif_mask & join.notna()]).dt.days / 30.0
+        # tidak aktif: end - join
+        masa.loc[(~aktif_mask) & join.notna() & end.notna()] = (end.loc[(~aktif_mask) & join.notna() & end.notna()] - join.loc[(~aktif_mask) & join.notna() & end.notna()]).dt.days / 30.0
+
+        df["MASA_KERJA_BULAN"] = masa.round(2)
+
+    info["columns_after"] = list(df.columns)
+    return df, info
+
+
 def render_ewa_page(ewa_file, company_master=None):
     st.markdown(f"## {EWA_ICON_SVG} EWA & PPOB Analytics (Transaction-level)", unsafe_allow_html=True)
     st.caption("Upload file kasbon/EWA/PPOB. Visualisasi pakai Plotly + filter interaktif.")
