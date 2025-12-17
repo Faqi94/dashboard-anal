@@ -263,9 +263,9 @@ def is_missing_text(s: pd.Series) -> pd.Series:
 # =============================
 st.sidebar.header("📦 Data Hub")
 
-emp_file = st.sidebar.file_uploader("Upload Dataset Karyawan (CSV/XLSX) — header=1", type=["csv", "xlsx"], key="emp")
-rekap_file = st.sidebar.file_uploader("Upload Rekap Perusahaan (XLSX)", type=["xlsx"], key="rekap")
-ewa_file = st.sidebar.file_uploader("📥 Upload Data EWA/PPOB (Kasbon) .xlsx", type=["xlsx"], key="ewa_file")
+emp_file = st.sidebar.file_uploader("Upload Dataset Karyawan - Dashboard (CSV/XLSX) — header=1", type=["csv", "xlsx"], key="emp")
+rekap_file = st.sidebar.file_uploader("Upload Rekap Perusahaan - Dashboard (XLSX)", type=["xlsx"], key="rekap")
+ewa_file = st.sidebar.file_uploader("📥 Upload Data EWA/PPOB (Kasbon Vinjer) .xlsx", type=["xlsx"], key="ewa_file")
 
 st.sidebar.markdown('<hr class="hrline"/>', unsafe_allow_html=True)
 st.sidebar.caption("Default filter: ALL perusahaan & ALL karyawan. Kamu bisa filter sendiri di sidebar.")
